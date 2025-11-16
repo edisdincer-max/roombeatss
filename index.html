@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roombeat — Kadıköy</title>
+
+<link rel="icon" type="image/png" href="favicon.png">
+
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- Supabase (DEFER YOK) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+:root{--bg:#0B47FF;--ink:#111;--paper:#fff;--muted:#666;--accent:#FFD447}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--paper);font-family:ui-monospace,monospace}
+
+.wrap{max-width:1100px;margin:0 auto;padding:18px}
+.header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;font-weight:900;text-transform:uppercase}
+.badge{width:40px;height:40px;border-radius:10px;background:#0F0F0F;color:#FFD447;display:grid;place-items:center;border:2px solid #000}
+.nav{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+.btn{background:#fff;color:#000;border:2px solid #000;border-radius:12px;padding:10px 14px;font-weight:900;text-decoration:none;cursor:pointer}
+.btn.primary{background:var(--accent)}
+
+.route{display:none}
+.route.active{display:block}
+
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:50}
+.modal .box{background:#fff;color:#000;border:2px solid #000;border-radius:14px;max-width:480px;width:92vw;padding:16px}
+
+input{width:100%;padding:10px;border:2px solid #000;border-radius:12px;font:inherit}
+
+#map{height:72vh;border:2px solid #000;border-radius:14px;box-shadow:6px 6px 0 rgba(0,0,0,.15)}
+
+.badge-dot{width:10px;height:10px;border-radius:999px;display:inline-block;margin-right:6px}
+.dot-uni{background:#1E90FF}
+.dot-fun{background:#32CD32}
+.dot-house{background:#FF8C00}
+.legend{background:#fff;border:2px solid #000;border-radius:12px;padding:8px;font-size:12px}
+</style>
+</head>
+
+<body>
+
+<div class="wrap header">
+  <div class="brand"><div class="badge">RB</div><div>ROOMBEAT</div></div>
+
+  <div class="nav">
+    <a class="btn" href="#/">Home</a>
+    <a class="btn" href="#/profiles">Profiles</a>
+    <a class="btn" href="#/map">Map</a>
+    <a class="btn" href="#/roadmap">Roadmap</a>
+
+    <!-- SIGN IN BUTTON -->
+    <button id="authBtn" class="btn">Sign in</button>
+  </div>
+</div>
+
+<main class="wrap">
+
+  <!-- HOME -->
+  <div id="route-home" class="route active">
+    <h1>Your home in the heart of Kadıköy</h1>
+    <p>Furnished rooms & verified tenants.</p>
+
+    <button class="btn primary" id="homeSignIn">Sign in</button>
+  </div>
+
+  <!-- MAP -->
+  <div id="route-map" class="route">
+    <h2>Kadıköy Map</h2>
+    <p>Universities are public. Houses appear after sign-in.</p>
+    <div id="map"></div>
+  </div>
+
+  <!-- PROFILES -->
+  <div id="route-profiles" class="route">
+    <h2>Profiles</h2>
+    <p id="profilesGuard">Login required.</p>
+    <div id="profilesContent" style="display:none;">
+      Verified profiles coming soon.
+    </div>
+  </div>
+
+  <!-- ROADMAP -->
+  <div id="route-roadmap" class="route">
+    <h2>Roadmap</h2>
+    <p>Phase 1 → Phase 2 → Phase 3</p>
+  </div>
+
+</main>
+
+<!-- AUTH MODAL -->
+<div id="authModal" class="modal">
+  <div class="box">
+    <h3>Sign in</h3>
+    <p>Enter your email:</p>
+    <input id="authEmail" placeholder="you@example.com">
+    <br><br>
+    <button id="sendMagic" class="btn primary">Send Magic Link</button>
+    <button id="closeAuth" class="btn">Close</button>
+    <div id="authStatus" style="margin-top:10px;color:#000;"></div>
+  </div>
+</div>
+
+<script>
+// ------- SUPABASE -------
+const supa = window.supabase.createClient(
+ "https://toslxiowcosjayynwqdc.supabase.co",
+ "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRvc2x4aW93Y29zanlheW53cWRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI2NTIyMzIsImV4cCI6MjA3ODIyODIzMn0.6mSSo03x2O4nKBQ5KoOEQ2VMPrp69sFY2pygpjBvCIo"
+);
+
+// ------- ROUTER -------
+const routes = {
+ "#/":"route-home",
+ "": "route-home",
+ "#/profiles":"route-profiles",
+ "#/map":"route-map",
+ "#/roadmap":"route-roadmap"
+};
+
+function nav(){
+ const key = location.hash.split("?")[0];
+ const id = routes[key] || "route-home";
+ document.querySelectorAll(".route").forEach(e=>e.classList.remove("active"));
+ document.getElementById(id).classList.add("active");
+ if(id==="route-map") initMap();
+}
+
+window.addEventListener("hashchange", nav);
+nav();
+
+// ------- AUTH MODAL -------
+const modal = document.getElementById("authModal");
+document.getElementById("authBtn").onclick=()=> modal.style.display="flex";
+document.getElementById("homeSignIn").onclick=()=> modal.style.display="flex";
+document.getElementById("closeAuth").onclick=()=> modal.style.display="none";
+
+document.getElementById("sendMagic").onclick=async()=>{
+ let email = document.getElementById("authEmail").value.trim();
+ if(!email) return alert("Email yaz.");
+ const {error} = await supa.auth.signInWithOtp({ email });
+ document.getElementById("authStatus").textContent = error ? error.message : "Magic link sent!";
+};
+
+// ------- SESSION -------
+async function refreshUI(){
+ const { data:{ session } } = await supa.auth.getSession();
+
+ const guard = document.getElementById("profilesGuard");
+ const content = document.getElementById("profilesContent");
+
+ if(session){
+   guard.style.display="none";
+   content.style.display="block";
+ } else {
+   guard.style.display="block";
+   content.style.display="none";
+ }
+}
+refreshUI();
+supa.auth.onAuthStateChange(refreshUI);
+
+// ------- MAP -------
+let mapReady=false;
+async function initMap(){
+ if(mapReady) return;
+ mapReady=true;
+
+ const session = (await supa.auth.getSession()).data.session;
+
+ const map = L.map("map").setView([40.99,29.027],14);
+ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+ // Public pins
+ L.marker([40.9839,29.0584]).addTo(map).bindPopup("Marmara University");
+ L.marker([40.9897,29.0318]).addTo(map).bindPopup("Kadife Street");
+
+ if(session){
+   L.marker([40.9878,29.0277]).addTo(map).bindPopup("House 1 (approx)");
+ }
+}
+</script>
+
+</body>
+</html>
